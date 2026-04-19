@@ -3,10 +3,9 @@ import express from "express";
 const app = express();
 app.use(express.json());
 
-// 🔑 sua chave (coloque no Railway ENV)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// 🧠 função para chamar IA
+// 🧠 Função segura para IA
 async function perguntarIA(pergunta) {
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -17,27 +16,35 @@ async function perguntarIA(pergunta) {
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `Responda de forma simples, clara e amigável para voz: ${pergunta}`
+        input: `Responda de forma curta, clara e natural para voz: ${pergunta}`
       })
     });
 
     const data = await response.json();
-    return data.output[0].content[0].text;
+
+    console.log("IA RESPONSE:", JSON.stringify(data, null, 2));
+
+    const text =
+      data.output?.[0]?.content?.[0]?.text ||
+      data.output_text ||
+      "Não consegui responder agora.";
+
+    return text;
 
   } catch (e) {
-    console.error(e);
-    return "Tive um problema ao pensar. Pode tentar novamente?";
+    console.error("ERRO IA:", e);
+    return "Erro ao acessar inteligência.";
   }
 }
 
-// 🔥 rota da Alexa
+// 🔥 ROTA DA ALEXA
 app.post("/", async (req, res) => {
   try {
     const request = req.body.request;
 
     let speechText = "Não entendi. Pode repetir?";
 
-    // 🟢 Quando abre
+    // 🟢 Quando abre a skill
     if (request.type === "LaunchRequest") {
       speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
     }
@@ -47,19 +54,30 @@ app.post("/", async (req, res) => {
       const intentName = request.intent.name;
 
       if (intentName === "ChatIntent") {
-        const userInput =
-          request.intent.slots?.query?.value ||
-          "não entendi";
 
-        // 🔥 chama IA
+        let userInput = "não entendi";
+
+        if (
+          request.intent &&
+          request.intent.slots &&
+          request.intent.slots.query &&
+          request.intent.slots.query.value
+        ) {
+          userInput = request.intent.slots.query.value;
+        }
+
+        // 🔥 CHAMA IA
         speechText = await perguntarIA(userInput);
       }
 
       if (intentName === "AMAZON.HelpIntent") {
-        speechText = "Você pode me perguntar qualquer coisa, como notícias, curiosidades ou ajuda.";
+        speechText = "Você pode me perguntar qualquer coisa.";
       }
 
-      if (intentName === "AMAZON.StopIntent" || intentName === "AMAZON.CancelIntent") {
+      if (
+        intentName === "AMAZON.StopIntent" ||
+        intentName === "AMAZON.CancelIntent"
+      ) {
         return res.json({
           version: "1.0",
           response: {
@@ -73,7 +91,15 @@ app.post("/", async (req, res) => {
       }
     }
 
-    // 🔵 resposta final Alexa
+    // 🔒 Garantia de resposta válida
+    if (!speechText || speechText.length === 0) {
+      speechText = "Não consegui entender. Pode repetir?";
+    }
+
+    // 🔒 Limite para Alexa
+    speechText = speechText.substring(0, 300);
+
+    // 🔵 RESPOSTA FINAL
     res.json({
       version: "1.0",
       response: {
