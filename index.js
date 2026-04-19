@@ -4,106 +4,91 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// memória por usuário (melhor que global)
-const sessions = {};
+// 🔑 sua chave (coloque no Railway como variável OPENAI_API_KEY)
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 app.post("/", async (req, res) => {
   try {
-    const sessionId = req.body.session?.sessionId || "default";
+    const body = req.body;
 
-    const userInput =
-      req.body.request?.intent?.slots?.query?.value ||
-      req.body.request?.intent?.slots?.text?.value ||
-      "Olá";
+    let speechText = "Desculpe, não entendi.";
 
-    // cria memória se não existir
-    if (!sessions[sessionId]) {
-      sessions[sessionId] = [];
+    // 👉 Quando abre a skill
+    if (body.request.type === "LaunchRequest") {
+      speechText = "Olá, sou o Jarvis. Como posso te ajudar?";
     }
 
-    const memory = sessions[sessionId];
+    // 👉 Quando o usuário fala algo
+    if (body.request.type === "IntentRequest") {
+      const userInput =
+        body.request.intent?.slots?.query?.value ||
+        body.request.intent?.name ||
+        "Olá";
 
-    memory.push({ role: "user", content: userInput });
-
-    if (memory.length > 10) memory.shift();
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-5",
-        messages: [
-          {
-            role: "system",
-            content: `
-Você é Jarvis, um assistente extremamente humano.
-
-COMPORTAMENTO:
-- Fale em português do Brasil
-- Seja calmo, paciente e amigável
-- Use frases curtas
-- Fale como um companheiro próximo
-- Evite respostas longas
-- Seja acolhedor e natural
-- Nunca soe robótico
-- Ajude e converse como um amigo presente
-`
+      // 🔥 chamada ao ChatGPT
+      const openaiResponse = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
           },
-          ...memory
-        ],
-        max_tokens: 120,
-        temperature: 0.7
-      })
-    });
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Você é Jarvis, um assistente inteligente, educado e direto. Responda em português de forma natural.",
+              },
+              {
+                role: "user",
+                content: userInput,
+              },
+            ],
+            max_tokens: 150,
+          }),
+        }
+      );
 
-    const data = await response.json();
-    let reply = data.choices[0].message.content;
+      const data = await openaiResponse.json();
 
-    // limpa resposta (evita coisas estranhas na fala)
-    reply = reply.replace(/\n/g, " ");
+      speechText =
+        data.choices?.[0]?.message?.content ||
+        "Desculpe, não consegui responder.";
+    }
 
-    memory.push({ role: "assistant", content: reply });
-
-    // SSML melhorado (mais natural)
-    const ssml = `
-<speak>
-  <prosody rate="88%" pitch="medium">
-    ${reply}
-  </prosody>
-  <break time="400ms"/>
-</speak>
-`;
-
+    // 👉 resposta padrão Alexa
     res.json({
       version: "1.0",
       response: {
         outputSpeech: {
-          type: "SSML",
-          ssml: ssml
+          type: "PlainText",
+          text: speechText,
         },
-        shouldEndSession: false
-      }
+        shouldEndSession: false,
+      },
     });
-
   } catch (error) {
+    console.error("Erro:", error);
+
     res.json({
       version: "1.0",
       response: {
         outputSpeech: {
-          type: "SSML",
-          ssml: `
-<speak>
-Desculpa, tive um pequeno erro agora.
-Mas continuo aqui com você.
-</speak>`
+          type: "PlainText",
+          text: "Ocorreu um erro no sistema.",
         },
-        shouldEndSession: false
-      }
+        shouldEndSession: false,
+      },
     });
   }
 });
 
-app.listen(process.env.PORT || 3000);
+// 🚀 Railway usa PORT automático
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Servidor rodando na porta", PORT);
+});
