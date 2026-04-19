@@ -4,21 +4,28 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// memória por sessão simples
-let memory = [];
+// memória por usuário (melhor que global)
+const sessions = {};
 
 app.post("/", async (req, res) => {
   try {
+    const sessionId = req.body.session?.sessionId || "default";
+
     const userInput =
       req.body.request?.intent?.slots?.query?.value ||
       req.body.request?.intent?.slots?.text?.value ||
       "Olá";
 
-    // adiciona à memória
+    // cria memória se não existir
+    if (!sessions[sessionId]) {
+      sessions[sessionId] = [];
+    }
+
+    const memory = sessions[sessionId];
+
     memory.push({ role: "user", content: userInput });
 
-    // limita memória (últimas 8 mensagens)
-    if (memory.length > 8) memory.shift();
+    if (memory.length > 10) memory.shift();
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -32,17 +39,17 @@ app.post("/", async (req, res) => {
           {
             role: "system",
             content: `
-Você é Jarvis, um assistente de voz extremamente humano, calmo e companheiro.
+Você é Jarvis, um assistente extremamente humano.
 
-REGRAS IMPORTANTES:
-- Fale sempre em português do Brasil
-- Use frases curtas e claras
-- Seja paciente e acolhedor
-- Responda como se estivesse conversando com alguém que depende da voz
-- Evite respostas longas demais
-- Use tom amigável e natural
-- Nunca seja robótico
-- Sempre soe como um amigo presente
+COMPORTAMENTO:
+- Fale em português do Brasil
+- Seja calmo, paciente e amigável
+- Use frases curtas
+- Fale como um companheiro próximo
+- Evite respostas longas
+- Seja acolhedor e natural
+- Nunca soe robótico
+- Ajude e converse como um amigo presente
 `
           },
           ...memory
@@ -53,17 +60,20 @@ REGRAS IMPORTANTES:
     });
 
     const data = await response.json();
-    const reply = data.choices[0].message.content;
+    let reply = data.choices[0].message.content;
 
-    // salva resposta
+    // limpa resposta (evita coisas estranhas na fala)
+    reply = reply.replace(/\n/g, " ");
+
     memory.push({ role: "assistant", content: reply });
 
-    // SSML (voz mais natural)
-    const ssmlResponse = `
+    // SSML melhorado (mais natural)
+    const ssml = `
 <speak>
-  <prosody rate="90%" pitch="medium">
+  <prosody rate="88%" pitch="medium">
     ${reply}
   </prosody>
+  <break time="400ms"/>
 </speak>
 `;
 
@@ -72,7 +82,7 @@ REGRAS IMPORTANTES:
       response: {
         outputSpeech: {
           type: "SSML",
-          ssml: ssmlResponse
+          ssml: ssml
         },
         shouldEndSession: false
       }
@@ -86,8 +96,8 @@ REGRAS IMPORTANTES:
           type: "SSML",
           ssml: `
 <speak>
-Desculpa, tive um pequeno problema agora.
-Mas estou aqui com você, pode tentar de novo.
+Desculpa, tive um pequeno erro agora.
+Mas continuo aqui com você.
 </speak>`
         },
         shouldEndSession: false
