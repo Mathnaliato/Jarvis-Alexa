@@ -4,21 +4,21 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// 🔑 sua chave (coloque no Railway como variável OPENAI_API_KEY)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+// 🔥 rota principal (Alexa SEMPRE chama POST /)
 app.post("/", async (req, res) => {
   try {
     const body = req.body;
 
     let speechText = "Desculpe, não entendi.";
 
-    // 👉 Quando abre a skill
+    // Quando abre a skill
     if (body.request.type === "LaunchRequest") {
-      speechText = "Olá, sou o Jarvis. Como posso te ajudar?";
+      speechText = "Olá, eu sou o Jarvis. Como posso te ajudar?";
     }
 
-    // 👉 Quando o usuário fala algo
+    // Quando o usuário fala algo
     if (body.request.type === "IntentRequest") {
       const userInput =
         body.request.intent?.slots?.query?.value ||
@@ -26,7 +26,7 @@ app.post("/", async (req, res) => {
         "Olá";
 
       // 🔥 chamada ao ChatGPT
-      const openaiResponse = await fetch(
+      const response = await fetch(
         "https://api.openai.com/v1/chat/completions",
         {
           method: "POST",
@@ -37,29 +37,21 @@ app.post("/", async (req, res) => {
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [
-              {
-                role: "system",
-                content:
-                  "Você é Jarvis, um assistente inteligente, educado e direto. Responda em português de forma natural.",
-              },
-              {
-                role: "user",
-                content: userInput,
-              },
+              { role: "system", content: "Você é o Jarvis, assistente inteligente." },
+              { role: "user", content: userInput },
             ],
-            max_tokens: 150,
           }),
         }
       );
 
-      const data = await openaiResponse.json();
+      const data = await response.json();
 
       speechText =
         data.choices?.[0]?.message?.content ||
         "Desculpe, não consegui responder.";
     }
 
-    // 👉 resposta padrão Alexa
+    // 🔥 RESPOSTA NO FORMATO EXATO DA ALEXA
     res.json({
       version: "1.0",
       response: {
@@ -80,15 +72,11 @@ app.post("/", async (req, res) => {
           type: "PlainText",
           text: "Ocorreu um erro no sistema.",
         },
-        shouldEndSession: false,
       },
     });
   }
 });
 
-// 🚀 Railway usa PORT automático
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Servidor rodando na porta", PORT);
+app.listen(8080, () => {
+  console.log("Servidor rodando na porta 8080");
 });
