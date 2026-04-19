@@ -1,71 +1,88 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-// 🔑 sua chave (vem do Railway ENV)
+// 🔑 sua chave (coloque no Railway ENV)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// 🔥 rota principal (Alexa usa POST /)
+// 🧠 função para chamar IA
+async function perguntarIA(pergunta) {
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: `Responda de forma simples, clara e amigável para voz: ${pergunta}`
+      })
+    });
+
+    const data = await response.json();
+    return data.output[0].content[0].text;
+
+  } catch (e) {
+    console.error(e);
+    return "Tive um problema ao pensar. Pode tentar novamente?";
+  }
+}
+
+// 🔥 rota da Alexa
 app.post("/", async (req, res) => {
   try {
-    const body = req.body;
+    const request = req.body.request;
 
-    let speechText = "Desculpe, não entendi.";
+    let speechText = "Não entendi. Pode repetir?";
 
-    // 🧠 Quando abre a skill
-    if (body.request.type === "LaunchRequest") {
-      speechText = "Olá, eu sou o Jarvis. Como posso te ajudar?";
+    // 🟢 Quando abre
+    if (request.type === "LaunchRequest") {
+      speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
     }
 
-    // 🧠 Quando o usuário fala algo
-    if (body.request.type === "IntentRequest") {
-      let userInput = "não entendi";
+    // 🟡 Quando fala algo
+    if (request.type === "IntentRequest") {
+      const intentName = request.intent.name;
 
-      if (
-        body.request.intent.slots &&
-        body.request.intent.slots.query &&
-        body.request.intent.slots.query.value
-      ) {
-        userInput = body.request.intent.slots.query.value;
+      if (intentName === "ChatIntent") {
+        const userInput =
+          request.intent.slots?.query?.value ||
+          "não entendi";
+
+        // 🔥 chama IA
+        speechText = await perguntarIA(userInput);
       }
 
-      // 🔥 (VERSÃO SIMPLES - só repete)
-      speechText = `Você disse: ${userInput}`;
+      if (intentName === "AMAZON.HelpIntent") {
+        speechText = "Você pode me perguntar qualquer coisa, como notícias, curiosidades ou ajuda.";
+      }
 
-      // 🚀 (VERSÃO COM IA - depois a gente ativa)
-      /*
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: "Você é o Jarvis, assistente inteligente." },
-            { role: "user", content: userInput }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      speechText = data.choices[0].message.content;
-      */
+      if (intentName === "AMAZON.StopIntent" || intentName === "AMAZON.CancelIntent") {
+        return res.json({
+          version: "1.0",
+          response: {
+            outputSpeech: {
+              type: "PlainText",
+              text: "Até logo!"
+            },
+            shouldEndSession: true
+          }
+        });
+      }
     }
 
-    // 📤 resposta para Alexa
+    // 🔵 resposta final Alexa
     res.json({
       version: "1.0",
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: speechText,
+          text: speechText
         },
-        shouldEndSession: false,
-      },
+        shouldEndSession: false
+      }
     });
 
   } catch (error) {
@@ -76,13 +93,13 @@ app.post("/", async (req, res) => {
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: "Erro no servidor.",
-        },
-      },
+          text: "Erro no sistema."
+        }
+      }
     });
   }
 });
 
-// 🚀 porta Railway
+// 🚀 Railway
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor rodando"));
+app.listen(PORT, () => console.log("Jarvis rodando"));
