@@ -1,36 +1,14 @@
 {
-  "interactionModel": {
-    "languageModel": {
-      "invocationName": "jarvis",
-      "intents": [
-        {
-          "name": "ChatIntent",
-          "slots": [
-            {
-              "name": "query",
-              "type": "AMAZON.SearchQuery"
-            }
-          ],
-          "samples": [
-            "{query}",
-            "diga {query}",
-            "fale {query}",
-            "pergunte {query}"
-          ]
-        },
-        {
-          "name": "AMAZON.HelpIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.CancelIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.StopIntent",
-          "samples": []
-        }
-      ]
-    }
+  "name": "jarvis-alexa",
+  "version": "1.0.0",
+  "description": "Jarvis Alexa Skill",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
   }
 }
