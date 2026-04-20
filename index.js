@@ -9,13 +9,22 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// função IA
+// timeout de segurança (Alexa odeia demora)
+const TIMEOUT_MS = 7000;
+
+// função IA com timeout
 async function perguntarIA(pergunta) {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
       input: `Responda de forma simples e natural para voz: ${pergunta}`,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     return (
       response?.output?.[0]?.content?.[0]?.text ||
@@ -23,18 +32,18 @@ async function perguntarIA(pergunta) {
     );
   } catch (err) {
     console.error("Erro OpenAI:", err);
-    return "Tive um problema ao responder.";
+    return "Estou um pouco lento agora, tente novamente.";
   }
 }
 
-// resposta padrão Alexa (SEMPRE válida)
+// resposta Alexa VALIDADA
 function respostaAlexa(texto, encerrar = false) {
   return {
     version: "1.0",
     response: {
       outputSpeech: {
         type: "PlainText",
-        text: String(texto), // força string
+        text: String(texto).substring(0, 8000), // evita quebra
       },
       shouldEndSession: encerrar,
     },
@@ -46,17 +55,24 @@ app.post("/", async (req, res) => {
     const request = req.body?.request;
 
     if (!request) {
-      return res.json(respostaAlexa("Erro na requisição."));
+      return res
+        .status(200)
+        .set("Content-Type", "application/json")
+        .send(JSON.stringify(respostaAlexa("Erro na requisição.")));
     }
 
-    // abertura
+    // 🚀 resposta rápida para abertura (IMPORTANTE)
     if (request.type === "LaunchRequest") {
-      return res.json(
-        respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo.")
-      );
+      return res
+        .status(200)
+        .set("Content-Type", "application/json")
+        .send(
+          JSON.stringify(
+            respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo.")
+          )
+        );
     }
 
-    // intents
     if (request.type === "IntentRequest") {
       const intent = request.intent?.name;
 
@@ -66,38 +82,61 @@ app.post("/", async (req, res) => {
 
         const resposta = await perguntarIA(userInput);
 
-        return res.json(respostaAlexa(resposta));
+        return res
+          .status(200)
+          .set("Content-Type", "application/json")
+          .send(JSON.stringify(respostaAlexa(resposta)));
       }
 
       if (intent === "AMAZON.HelpIntent") {
-        return res.json(
-          respostaAlexa("Você pode me fazer qualquer pergunta.")
-        );
+        return res
+          .status(200)
+          .set("Content-Type", "application/json")
+          .send(
+            JSON.stringify(
+              respostaAlexa("Você pode me fazer qualquer pergunta.")
+            )
+          );
       }
 
       if (
         intent === "AMAZON.StopIntent" ||
         intent === "AMAZON.CancelIntent"
       ) {
-        return res.json(
-          respostaAlexa("Até logo!", true)
-        );
+        return res
+          .status(200)
+          .set("Content-Type", "application/json")
+          .send(
+            JSON.stringify(respostaAlexa("Até logo!", true))
+          );
       }
     }
 
-    // fallback
-    return res.json(
-      respostaAlexa("Não entendi. Pode repetir?")
-    );
+    return res
+      .status(200)
+      .set("Content-Type", "application/json")
+      .send(
+        JSON.stringify(
+          respostaAlexa("Não entendi. Pode repetir?")
+        )
+      );
   } catch (err) {
     console.error("Erro geral:", err);
 
-    return res.json(
-      respostaAlexa("Erro interno.")
-    );
+    return res
+      .status(200)
+      .set("Content-Type", "application/json")
+      .send(
+        JSON.stringify(
+          respostaAlexa("Erro interno no sistema.")
+        )
+      );
   }
 });
 
-app.listen(3000, () => {
-  console.log("Servidor rodando");
+// 👇 MUITO IMPORTANTE (Railway)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Servidor rodando na porta", PORT);
 });
