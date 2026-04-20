@@ -5,117 +5,143 @@ const OpenAI = require("openai");
 const app = express();
 app.use(bodyParser.json());
 
+// 🔑 OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// 🔥 FUNÇÃO IA (CORRIGIDA E COM DEBUG)
-async function perguntarIA(pergunta) {
+// 🧠 Memória simples (por usuário)
+const conversas = {};
+
+// 🎯 Função principal IA (ULTRA MELHORADA)
+async function perguntarIA(userId, pergunta) {
   try {
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: `Responda de forma curta e natural para voz: ${pergunta}`,
-    });
-
-    console.log("RESPOSTA OPENAI:", JSON.stringify(response, null, 2));
-
-    if (!response.output || !response.output.length) {
-      return "Não consegui pensar em uma resposta agora.";
+    if (!conversas[userId]) {
+      conversas[userId] = [];
     }
 
-    const texto =
-      response.output[0]?.content?.[0]?.text ||
+    // adiciona pergunta do usuário
+    conversas[userId].push({
+      role: "user",
+      content: pergunta,
+    });
+
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "Você é o Jarvis, um assistente inspirado no Homem de Ferro. Seja inteligente, elegante, direto e natural para voz. Responda de forma clara, sem ser longo demais.",
+        },
+        ...conversas[userId],
+      ],
+    });
+
+    // 🔥 captura segura da resposta
+    let texto =
+      response.output?.[0]?.content?.[0]?.text ||
       response.output_text ||
-      "Não consegui responder.";
+      "Não consegui formular uma resposta.";
+
+    // salva resposta
+    conversas[userId].push({
+      role: "assistant",
+      content: texto,
+    });
+
+    // 🧹 limita memória (evita travar e ficar caro)
+    if (conversas[userId].length > 12) {
+      conversas[userId] = conversas[userId].slice(-12);
+    }
 
     return texto;
-
   } catch (error) {
-    console.error("ERRO OPENAI DETALHADO:", error);
-    return "Tive um problema ao pensar na resposta.";
+    console.error("ERRO OPENAI:", error);
+    return "Estou com dificuldade para pensar agora. Tente novamente.";
   }
 }
 
-// 🔥 RESPOSTA PADRÃO ALEXA
-function respostaAlexa(texto, encerrar = false) {
-  return {
-    version: "1.0",
-    response: {
-      outputSpeech: {
-        type: "PlainText",
-        text: String(texto).substring(0, 8000),
-      },
-      shouldEndSession: encerrar,
-    },
-  };
+// 🧠 Extrai o que o usuário falou (Alexa)
+function extrairTextoAlexa(request) {
+  try {
+    if (request.type === "LaunchRequest") {
+      return "iniciar conversa";
+    }
+
+    if (
+      request.type === "IntentRequest" &&
+      request.intent &&
+      request.intent.slots
+    ) {
+      const slots = request.intent.slots;
+
+      for (let key in slots) {
+        if (slots[key].value) {
+          return slots[key].value;
+        }
+      }
+    }
+
+    return "não entendi";
+  } catch {
+    return "erro ao entender";
+  }
 }
 
-// 🔥 ROTA PRINCIPAL
+// 🟢 ROTA PRINCIPAL (ALEXA)
 app.post("/", async (req, res) => {
   try {
-    const request = req.body?.request;
+    const request = req.body.request;
+    const userId = req.body.session.user.userId;
 
-    if (!request) {
-      return res
-        .status(200)
-        .json(respostaAlexa("Erro na requisição."));
-    }
+    const userInput = extrairTextoAlexa(request);
 
-    // 🟢 ABRIR SKILL
+    let resposta;
+
+    // 👋 abertura
     if (request.type === "LaunchRequest") {
-      return res
-        .status(200)
-        .json(respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo."));
+      resposta =
+        "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
+    } else {
+      resposta = await perguntarIA(userId, userInput);
     }
 
-    // 🟢 INTENTS
-    if (request.type === "IntentRequest") {
-      const intent = request.intent?.name;
+    // 🧠 resposta final (PROFISSIONAL)
+    res.json({
+      version: "1.0",
+      response: {
+        outputSpeech: {
+          type: "PlainText",
+          text: resposta,
+        },
+        reprompt: {
+          outputSpeech: {
+            type: "PlainText",
+            text: "Pode continuar, estou ouvindo.",
+          },
+        },
+        shouldEndSession: false,
+      },
+    });
+  } catch (error) {
+    console.error("ERRO GERAL:", error);
 
-      if (intent === "ChatIntent") {
-        const userInput =
-          request.intent?.slots?.query?.value || "Olá";
-
-        const resposta = await perguntarIA(userInput);
-
-        return res
-          .status(200)
-          .json(respostaAlexa(resposta));
-      }
-
-      if (intent === "AMAZON.HelpIntent") {
-        return res
-          .status(200)
-          .json(respostaAlexa("Você pode me fazer qualquer pergunta."));
-      }
-
-      if (
-        intent === "AMAZON.StopIntent" ||
-        intent === "AMAZON.CancelIntent"
-      ) {
-        return res
-          .status(200)
-          .json(respostaAlexa("Até logo!", true));
-      }
-    }
-
-    // 🟡 FALLBACK
-    return res
-      .status(200)
-      .json(respostaAlexa("Não entendi. Pode repetir?"));
-
-  } catch (err) {
-    console.error("ERRO GERAL:", err);
-
-    return res
-      .status(200)
-      .json(respostaAlexa("Erro interno no sistema."));
+    res.json({
+      version: "1.0",
+      response: {
+        outputSpeech: {
+          type: "PlainText",
+          text: "Ocorreu um erro no sistema.",
+        },
+        shouldEndSession: true,
+      },
+    });
   }
 });
 
-// 🚀 PORTA DO RAILWAY
+// 🚀 servidor
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-  console.log("Servidor rodando na porta", PORT);
+  console.log("Jarvis rodando na porta", PORT);
 });
