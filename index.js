@@ -5,53 +5,42 @@ const OpenAI = require("openai");
 const app = express();
 app.use(bodyParser.json());
 
-// valida API key
-if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ OPENAI_API_KEY não encontrada!");
-}
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// função de IA
+// função IA
 async function perguntarIA(pergunta) {
   try {
-    if (!pergunta || pergunta.trim() === "") {
-      return "Pode repetir a pergunta?";
-    }
-
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `Responda de forma curta, natural e fácil de ouvir em voz: ${pergunta}`,
+      input: `Responda de forma simples e natural para voz: ${pergunta}`,
     });
 
-    const text =
+    return (
       response?.output?.[0]?.content?.[0]?.text ||
-      "Não consegui responder agora.";
-
-    return text;
-  } catch (error) {
-    console.error("ERRO OPENAI:", error);
+      "Não consegui responder agora."
+    );
+  } catch (err) {
+    console.error("Erro OpenAI:", err);
     return "Tive um problema ao responder.";
   }
 }
 
-// função padrão de resposta Alexa
-function respostaAlexa(texto) {
+// resposta padrão Alexa (SEMPRE válida)
+function respostaAlexa(texto, encerrar = false) {
   return {
     version: "1.0",
     response: {
       outputSpeech: {
         type: "PlainText",
-        text: texto,
+        text: String(texto), // força string
       },
-      shouldEndSession: false,
+      shouldEndSession: encerrar,
     },
   };
 }
 
-// rota principal
 app.post("/", async (req, res) => {
   try {
     const request = req.body?.request;
@@ -60,21 +49,18 @@ app.post("/", async (req, res) => {
       return res.json(respostaAlexa("Erro na requisição."));
     }
 
-    // abertura da skill
+    // abertura
     if (request.type === "LaunchRequest") {
       return res.json(
-        respostaAlexa(
-          "Olá, eu sou o Jarvis. Pode falar comigo naturalmente."
-        )
+        respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo.")
       );
     }
 
     // intents
     if (request.type === "IntentRequest") {
-      const intentName = request.intent?.name;
+      const intent = request.intent?.name;
 
-      // pergunta com IA
-      if (intentName === "ChatIntent") {
+      if (intent === "ChatIntent") {
         const userInput =
           request.intent?.slots?.query?.value || "Olá";
 
@@ -83,28 +69,19 @@ app.post("/", async (req, res) => {
         return res.json(respostaAlexa(resposta));
       }
 
-      // ajuda
-      if (intentName === "AMAZON.HelpIntent") {
+      if (intent === "AMAZON.HelpIntent") {
         return res.json(
           respostaAlexa("Você pode me fazer qualquer pergunta.")
         );
       }
 
-      // cancelar/sair
       if (
-        intentName === "AMAZON.StopIntent" ||
-        intentName === "AMAZON.CancelIntent"
+        intent === "AMAZON.StopIntent" ||
+        intent === "AMAZON.CancelIntent"
       ) {
-        return res.json({
-          version: "1.0",
-          response: {
-            outputSpeech: {
-              type: "PlainText",
-              text: "Até logo!",
-            },
-            shouldEndSession: true,
-          },
-        });
+        return res.json(
+          respostaAlexa("Até logo!", true)
+        );
       }
     }
 
@@ -112,16 +89,15 @@ app.post("/", async (req, res) => {
     return res.json(
       respostaAlexa("Não entendi. Pode repetir?")
     );
-  } catch (error) {
-    console.error("ERRO GERAL:", error);
+  } catch (err) {
+    console.error("Erro geral:", err);
 
     return res.json(
-      respostaAlexa("Erro no sistema.")
+      respostaAlexa("Erro interno.")
     );
   }
 });
 
-// servidor
 app.listen(3000, () => {
-  console.log("🚀 Servidor rodando");
+  console.log("Servidor rodando");
 });
