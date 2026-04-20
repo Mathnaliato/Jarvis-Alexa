@@ -9,47 +9,48 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// timeout de segurança (Alexa odeia demora)
-const TIMEOUT_MS = 7000;
-
-// função IA com timeout
+// 🔥 FUNÇÃO IA (CORRIGIDA E COM DEBUG)
 async function perguntarIA(pergunta) {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `Responda de forma simples e natural para voz: ${pergunta}`,
-      signal: controller.signal,
+      input: `Responda de forma curta e natural para voz: ${pergunta}`,
     });
 
-    clearTimeout(timeout);
+    console.log("RESPOSTA OPENAI:", JSON.stringify(response, null, 2));
 
-    return (
-      response?.output?.[0]?.content?.[0]?.text ||
-      "Não consegui responder agora."
-    );
-  } catch (err) {
-    console.error("Erro OpenAI:", err);
-    return "Estou um pouco lento agora, tente novamente.";
+    if (!response.output || !response.output.length) {
+      return "Não consegui pensar em uma resposta agora.";
+    }
+
+    const texto =
+      response.output[0]?.content?.[0]?.text ||
+      response.output_text ||
+      "Não consegui responder.";
+
+    return texto;
+
+  } catch (error) {
+    console.error("ERRO OPENAI DETALHADO:", error);
+    return "Tive um problema ao pensar na resposta.";
   }
 }
 
-// resposta Alexa VALIDADA
+// 🔥 RESPOSTA PADRÃO ALEXA
 function respostaAlexa(texto, encerrar = false) {
   return {
     version: "1.0",
     response: {
       outputSpeech: {
         type: "PlainText",
-        text: String(texto).substring(0, 8000), // evita quebra
+        text: String(texto).substring(0, 8000),
       },
       shouldEndSession: encerrar,
     },
   };
 }
 
+// 🔥 ROTA PRINCIPAL
 app.post("/", async (req, res) => {
   try {
     const request = req.body?.request;
@@ -57,22 +58,17 @@ app.post("/", async (req, res) => {
     if (!request) {
       return res
         .status(200)
-        .set("Content-Type", "application/json")
-        .send(JSON.stringify(respostaAlexa("Erro na requisição.")));
+        .json(respostaAlexa("Erro na requisição."));
     }
 
-    // 🚀 resposta rápida para abertura (IMPORTANTE)
+    // 🟢 ABRIR SKILL
     if (request.type === "LaunchRequest") {
       return res
         .status(200)
-        .set("Content-Type", "application/json")
-        .send(
-          JSON.stringify(
-            respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo.")
-          )
-        );
+        .json(respostaAlexa("Olá, eu sou o Jarvis. Pode falar comigo."));
     }
 
+    // 🟢 INTENTS
     if (request.type === "IntentRequest") {
       const intent = request.intent?.name;
 
@@ -84,19 +80,13 @@ app.post("/", async (req, res) => {
 
         return res
           .status(200)
-          .set("Content-Type", "application/json")
-          .send(JSON.stringify(respostaAlexa(resposta)));
+          .json(respostaAlexa(resposta));
       }
 
       if (intent === "AMAZON.HelpIntent") {
         return res
           .status(200)
-          .set("Content-Type", "application/json")
-          .send(
-            JSON.stringify(
-              respostaAlexa("Você pode me fazer qualquer pergunta.")
-            )
-          );
+          .json(respostaAlexa("Você pode me fazer qualquer pergunta."));
       }
 
       if (
@@ -105,36 +95,25 @@ app.post("/", async (req, res) => {
       ) {
         return res
           .status(200)
-          .set("Content-Type", "application/json")
-          .send(
-            JSON.stringify(respostaAlexa("Até logo!", true))
-          );
+          .json(respostaAlexa("Até logo!", true));
       }
     }
 
+    // 🟡 FALLBACK
     return res
       .status(200)
-      .set("Content-Type", "application/json")
-      .send(
-        JSON.stringify(
-          respostaAlexa("Não entendi. Pode repetir?")
-        )
-      );
+      .json(respostaAlexa("Não entendi. Pode repetir?"));
+
   } catch (err) {
-    console.error("Erro geral:", err);
+    console.error("ERRO GERAL:", err);
 
     return res
       .status(200)
-      .set("Content-Type", "application/json")
-      .send(
-        JSON.stringify(
-          respostaAlexa("Erro interno no sistema.")
-        )
-      );
+      .json(respostaAlexa("Erro interno no sistema."));
   }
 });
 
-// 👇 MUITO IMPORTANTE (Railway)
+// 🚀 PORTA DO RAILWAY
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
