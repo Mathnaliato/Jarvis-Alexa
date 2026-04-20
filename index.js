@@ -1,105 +1,110 @@
-import express from "express";
-import fetch from "node-fetch";
+const express = require("express");
+const bodyParser = require("body-parser");
+const OpenAI = require("openai");
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
+// OpenAI (nova versão)
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Função que chama o ChatGPT
+async function perguntarIA(pergunta) {
+  try {
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: `Responda de forma clara, curta e amigável para voz: ${pergunta}`,
+    });
+
+    return response.output[0].content[0].text;
+
+  } catch (error) {
+    console.error("ERRO OPENAI:", error);
+    return "Desculpa, tive um problema para responder.";
+  }
+}
+
+// ROTA DA ALEXA
 app.post("/", async (req, res) => {
   try {
-    console.log("REQUEST:", JSON.stringify(req.body));
+    const request = req.body.request;
 
-    // 🔹 Quando abre a skill
-    if (req.body.request.type === "LaunchRequest") {
-      return res.json({
-        version: "1.0",
-        response: {
-          outputSpeech: {
-            type: "PlainText",
-            text: "Olá, eu sou o Jarvis. Pode falar comigo naturalmente."
-          },
-          shouldEndSession: false
-        }
-      });
-    }
+    let speechText = "Não entendi. Pode repetir?";
 
-    // 🔹 Quando fala algo
-    if (req.body.request.type === "IntentRequest") {
-      const userQuery =
-        req.body.request.intent?.slots?.query?.value || "não entendi";
-
-      console.log("PERGUNTA:", userQuery);
-
-      const openaiResponse = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "Você é o Jarvis, um assistente inteligente, simples, claro e amigável, que fala em português."
-              },
-              {
-                role: "user",
-                content: userQuery
-              }
-            ]
-          })
-        }
-      );
-
-      const data = await openaiResponse.json();
-
-      console.log("IA RESPONSE:", JSON.stringify(data));
-
-      const reply =
-        data.choices?.[0]?.message?.content ||
-        "Desculpe, não consegui responder.";
+    // Quando abre a skill
+    if (request.type === "LaunchRequest") {
+      speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
 
       return res.json({
         version: "1.0",
         response: {
           outputSpeech: {
             type: "PlainText",
-            text: reply
+            text: speechText,
           },
-          shouldEndSession: false
-        }
+          shouldEndSession: false,
+        },
       });
     }
 
+    // Quando o usuário fala algo
+    if (request.type === "IntentRequest") {
+      let userInput = "não entendi";
+
+      if (
+        request.intent &&
+        request.intent.slots &&
+        request.intent.slots.query &&
+        request.intent.slots.query.value
+      ) {
+        userInput = request.intent.slots.query.value;
+      }
+
+      const respostaIA = await perguntarIA(userInput);
+
+      return res.json({
+        version: "1.0",
+        response: {
+          outputSpeech: {
+            type: "PlainText",
+            text: respostaIA,
+          },
+          shouldEndSession: false,
+        },
+      });
+    }
+
+    // fallback
     return res.json({
       version: "1.0",
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: "Não entendi."
+          text: "Não entendi.",
         },
-        shouldEndSession: false
-      }
+        shouldEndSession: false,
+      },
     });
+
   } catch (error) {
-    console.error("ERRO:", error);
+    console.error("ERRO GERAL:", error);
 
     return res.json({
       version: "1.0",
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: "Erro no sistema."
+          text: "Erro no sistema.",
         },
-        shouldEndSession: false
-      }
+        shouldEndSession: false,
+      },
     });
   }
 });
 
+// Servidor
 app.listen(3000, () => {
   console.log("Servidor rodando");
 });
