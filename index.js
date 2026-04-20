@@ -5,45 +5,38 @@ const OpenAI = require("openai");
 const app = express();
 app.use(bodyParser.json());
 
-// OpenAI (nova versão correta)
+// OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Função que chama o ChatGPT (CORRIGIDA)
+// 🔥 FUNÇÃO IA (SUPER ESTÁVEL)
 async function perguntarIA(pergunta) {
   try {
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `Responda de forma simples, clara e natural para voz: ${pergunta}`,
+      input: pergunta,
     });
 
-    if (
-      response &&
-      response.output &&
-      response.output[0] &&
-      response.output[0].content &&
-      response.output[0].content[0] &&
-      response.output[0].content[0].text
-    ) {
-      return response.output[0].content[0].text;
-    }
+    const text =
+      response.output?.[0]?.content?.[0]?.text ||
+      "Não consegui responder.";
 
-    return "Desculpa, não consegui entender.";
+    return text;
   } catch (error) {
     console.error("ERRO OPENAI:", error);
     return "Tive um problema ao responder.";
   }
 }
 
-// ROTA DA ALEXA (CORRIGIDA 100%)
+// 🔥 ROTA ALEXA
 app.post("/", async (req, res) => {
   try {
     const request = req.body.request;
 
     let speechText = "Não entendi. Pode repetir?";
 
-    // Quando abre a skill
+    // Quando abre
     if (request.type === "LaunchRequest") {
       speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
     }
@@ -93,7 +86,7 @@ app.post("/", async (req, res) => {
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: speechText,
+          text: String(speechText), // 🔥 GARANTE QUE É STRING
         },
         shouldEndSession: false,
       },
@@ -114,7 +107,7 @@ app.post("/", async (req, res) => {
   }
 });
 
-// PORTA (IMPORTANTE PRO RAILWAY)
+// 🔥 PORTA CORRETA (RAILWAY)
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
