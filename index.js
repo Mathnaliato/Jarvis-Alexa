@@ -5,22 +5,30 @@ const OpenAI = require("openai");
 const app = express();
 app.use(bodyParser.json());
 
-// OpenAI
+// valida API key
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ OPENAI_API_KEY não encontrada!");
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// 🔥 FUNÇÃO IA (SUPER ESTÁVEL)
+// função de IA
 async function perguntarIA(pergunta) {
   try {
+    if (!pergunta || pergunta.trim() === "") {
+      return "Pode repetir a pergunta?";
+    }
+
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: pergunta,
+      input: `Responda de forma curta, natural e fácil de ouvir em voz: ${pergunta}`,
     });
 
     const text =
-      response.output?.[0]?.content?.[0]?.text ||
-      "Não consegui responder.";
+      response?.output?.[0]?.content?.[0]?.text ||
+      "Não consegui responder agora.";
 
     return text;
   } catch (error) {
@@ -29,41 +37,60 @@ async function perguntarIA(pergunta) {
   }
 }
 
-// 🔥 ROTA ALEXA
+// função padrão de resposta Alexa
+function respostaAlexa(texto) {
+  return {
+    version: "1.0",
+    response: {
+      outputSpeech: {
+        type: "PlainText",
+        text: texto,
+      },
+      shouldEndSession: false,
+    },
+  };
+}
+
+// rota principal
 app.post("/", async (req, res) => {
   try {
-    const request = req.body.request;
+    const request = req.body?.request;
 
-    let speechText = "Não entendi. Pode repetir?";
-
-    // Quando abre
-    if (request.type === "LaunchRequest") {
-      speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
+    if (!request) {
+      return res.json(respostaAlexa("Erro na requisição."));
     }
 
-    // Quando fala algo
+    // abertura da skill
+    if (request.type === "LaunchRequest") {
+      return res.json(
+        respostaAlexa(
+          "Olá, eu sou o Jarvis. Pode falar comigo naturalmente."
+        )
+      );
+    }
+
+    // intents
     if (request.type === "IntentRequest") {
-      const intentName = request.intent.name;
+      const intentName = request.intent?.name;
 
+      // pergunta com IA
       if (intentName === "ChatIntent") {
-        let userInput = "não entendi";
+        const userInput =
+          request.intent?.slots?.query?.value || "Olá";
 
-        if (
-          request.intent &&
-          request.intent.slots &&
-          request.intent.slots.query &&
-          request.intent.slots.query.value
-        ) {
-          userInput = request.intent.slots.query.value;
-        }
+        const resposta = await perguntarIA(userInput);
 
-        speechText = await perguntarIA(userInput);
+        return res.json(respostaAlexa(resposta));
       }
 
+      // ajuda
       if (intentName === "AMAZON.HelpIntent") {
-        speechText = "Você pode me perguntar qualquer coisa.";
+        return res.json(
+          respostaAlexa("Você pode me fazer qualquer pergunta.")
+        );
       }
 
+      // cancelar/sair
       if (
         intentName === "AMAZON.StopIntent" ||
         intentName === "AMAZON.CancelIntent"
@@ -73,7 +100,7 @@ app.post("/", async (req, res) => {
           response: {
             outputSpeech: {
               type: "PlainText",
-              text: "Até mais!",
+              text: "Até logo!",
             },
             shouldEndSession: true,
           },
@@ -81,35 +108,20 @@ app.post("/", async (req, res) => {
       }
     }
 
-    return res.json({
-      version: "1.0",
-      response: {
-        outputSpeech: {
-          type: "PlainText",
-          text: String(speechText), // 🔥 GARANTE QUE É STRING
-        },
-        shouldEndSession: false,
-      },
-    });
+    // fallback
+    return res.json(
+      respostaAlexa("Não entendi. Pode repetir?")
+    );
   } catch (error) {
     console.error("ERRO GERAL:", error);
 
-    return res.json({
-      version: "1.0",
-      response: {
-        outputSpeech: {
-          type: "PlainText",
-          text: "Erro no sistema.",
-        },
-        shouldEndSession: false,
-      },
-    });
+    return res.json(
+      respostaAlexa("Erro no sistema.")
+    );
   }
 });
 
-// 🔥 PORTA CORRETA (RAILWAY)
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Servidor rodando na porta " + PORT);
+// servidor
+app.listen(3000, () => {
+  console.log("🚀 Servidor rodando");
 });
