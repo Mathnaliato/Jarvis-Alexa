@@ -1,6 +1,7 @@
 {
   "name": "jarvis-alexa",
   "version": "1.0.0",
+  "description": "Jarvis Alexa com ChatGPT",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
