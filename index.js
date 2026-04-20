@@ -1,131 +1,105 @@
 import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-// 🧠 Função segura para IA
-async function perguntarIA(pergunta) {
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: `Responda de forma curta, clara e natural para voz: ${pergunta}`
-      })
-    });
-
-    const data = await response.json();
-
-    console.log("IA RESPONSE:", JSON.stringify(data, null, 2));
-
-    const text =
-      data.output?.[0]?.content?.[0]?.text ||
-      data.output_text ||
-      "Não consegui responder agora.";
-
-    return text;
-
-  } catch (e) {
-    console.error("ERRO IA:", e);
-    return "Erro ao acessar inteligência.";
-  }
-}
-
-// 🔥 ROTA DA ALEXA
 app.post("/", async (req, res) => {
   try {
-    const request = req.body.request;
+    console.log("REQUEST:", JSON.stringify(req.body));
 
-    let speechText = "Não entendi. Pode repetir?";
-
-    // 🟢 Quando abre a skill
-    if (request.type === "LaunchRequest") {
-      speechText = "Olá, eu sou o Jarvis. Pode falar comigo naturalmente.";
-    }
-
-    // 🟡 Quando fala algo
-    if (request.type === "IntentRequest") {
-      const intentName = request.intent.name;
-
-      if (intentName === "ChatIntent") {
-
-        let userInput = "não entendi";
-
-        if (
-          request.intent &&
-          request.intent.slots &&
-          request.intent.slots.query &&
-          request.intent.slots.query.value
-        ) {
-          userInput = request.intent.slots.query.value;
+    // 🔹 Quando abre a skill
+    if (req.body.request.type === "LaunchRequest") {
+      return res.json({
+        version: "1.0",
+        response: {
+          outputSpeech: {
+            type: "PlainText",
+            text: "Olá, eu sou o Jarvis. Pode falar comigo naturalmente."
+          },
+          shouldEndSession: false
         }
-
-        // 🔥 CHAMA IA
-        speechText = await perguntarIA(userInput);
-      }
-
-      if (intentName === "AMAZON.HelpIntent") {
-        speechText = "Você pode me perguntar qualquer coisa.";
-      }
-
-      if (
-        intentName === "AMAZON.StopIntent" ||
-        intentName === "AMAZON.CancelIntent"
-      ) {
-        return res.json({
-          version: "1.0",
-          response: {
-            outputSpeech: {
-              type: "PlainText",
-              text: "Até logo!"
-            },
-            shouldEndSession: true
-          }
-        });
-      }
+      });
     }
 
-    // 🔒 Garantia de resposta válida
-    if (!speechText || speechText.length === 0) {
-      speechText = "Não consegui entender. Pode repetir?";
+    // 🔹 Quando fala algo
+    if (req.body.request.type === "IntentRequest") {
+      const userQuery =
+        req.body.request.intent?.slots?.query?.value || "não entendi";
+
+      console.log("PERGUNTA:", userQuery);
+
+      const openaiResponse = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Você é o Jarvis, um assistente inteligente, simples, claro e amigável, que fala em português."
+              },
+              {
+                role: "user",
+                content: userQuery
+              }
+            ]
+          })
+        }
+      );
+
+      const data = await openaiResponse.json();
+
+      console.log("IA RESPONSE:", JSON.stringify(data));
+
+      const reply =
+        data.choices?.[0]?.message?.content ||
+        "Desculpe, não consegui responder.";
+
+      return res.json({
+        version: "1.0",
+        response: {
+          outputSpeech: {
+            type: "PlainText",
+            text: reply
+          },
+          shouldEndSession: false
+        }
+      });
     }
 
-    // 🔒 Limite para Alexa
-    speechText = speechText.substring(0, 300);
-
-    // 🔵 RESPOSTA FINAL
-    res.json({
+    return res.json({
       version: "1.0",
       response: {
         outputSpeech: {
           type: "PlainText",
-          text: speechText
+          text: "Não entendi."
         },
         shouldEndSession: false
       }
     });
-
   } catch (error) {
-    console.error(error);
+    console.error("ERRO:", error);
 
-    res.json({
+    return res.json({
       version: "1.0",
       response: {
         outputSpeech: {
           type: "PlainText",
           text: "Erro no sistema."
-        }
+        },
+        shouldEndSession: false
       }
     });
   }
 });
 
-// 🚀 Railway
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Jarvis rodando"));
+app.listen(3000, () => {
+  console.log("Servidor rodando");
+});
